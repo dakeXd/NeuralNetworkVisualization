@@ -1,0 +1,135 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 816044f31389d1f498ace25580fd61e0, type: 3}
+  m_Name: Cafe_Tempo
+  m_EditorClassIdentifier: 
+  data:
+  - temperatura: 10
+    altitud: 1000
+    valid: 0
+  - temperatura: 30
+    altitud: 500
+    valid: 1
+  - temperatura: 24
+    altitud: 1200
+    valid: 1
+  - temperatura: 23
+    altitud: 1700
+    valid: 1
+  - temperatura: 18
+    altitud: 900
+    valid: 1
+  - temperatura: 18
+    altitud: 500
+    valid: 1
+  - temperatura: 20
+    altitud: 900
+    valid: 1
+  - temperatura: 23
+    altitud: 1500
+    valid: 1
+  - temperatura: 6
+    altitud: 2000
+    valid: 0
+  - temperatura: 12
+    altitud: 1700
+    valid: 0
+  - temperatura: 19
+    altitud: 2000
+    valid: 1
+  - temperatura: 14
+    altitud: 1500
+    valid: 0
+  - temperatura: 24
+    altitud: 1700
+    valid: 1
+  - temperatura: 19
+    altitud: 2050
+    valid: 1
+  - temperatura: 4
+    altitud: 100
+    valid: 0
+  - temperatura: 40
+    altitud: 300
+    valid: 1
+  - temperatura: 23
+    altitud: 1000
+    valid: 1
+  - temperatura: 22
+    altitud: 1300
+    valid: 1
+  - temperatura: 22
+    altitud: 2300
+    valid: 1
+  - temperatura: 25
+    altitud: 1000
+    valid: 1
+  - temperatura: 30
+    altitud: 1000
+    valid: 1
+  - temperatura: 22
+    altitud: 1000
+    valid: 1
+  - temperatura: 21
+    altitud: 1400
+    valid: 1
+  - temperatura: 30
+    altitud: 1270
+    valid: 1
+  - temperatura: 22
+    altitud: 1700
+    valid: 1
+  - temperatura: 16
+    altitud: 1400
+    valid: 0
+  - temperatura: 18
+    altitud: 1399
+    valid: 1
+  - temperatura: 17
+    altitud: 459
+    valid: 0
+  - temperatura: 5
+    altitud: 1000
+    valid: 0
+  - temperatura: 22
+    altitud: 1450
+    valid: 1
+  - temperatura: 17
+    altitud: 1320
+    valid: 0
+  - temperatura: 14
+    altitud: 2000
+    valid: 0
+  - temperatura: 13
+    altitud: 1550
+    valid: 0
+  - temperatura: 19
+    altitud: 1320
+    valid: 1
+  - temperatura: 21
+    altitud: 1449
+    valid: 1
+  - temperatura: 26
+    altitud: 2000
+    valid: 1
+  - temperatura: 8
+    altitud: 1600
+    valid: 0
+  - temperatura: 4
+    altitud: 1650
+    valid: 0
+  - temperatura: 12
+    altitud: 1000
+    valid: 0
+  - temperatura: 28
+    altitud: 300
+    valid: 1
