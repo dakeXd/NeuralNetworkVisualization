@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Data;
 using UnityEngine;
+using Random = UnityEngine.Random;
 
 public class MultilayerNeuralNetwork : MonoBehaviour
 {
@@ -10,11 +11,18 @@ public class MultilayerNeuralNetwork : MonoBehaviour
     public AdvancedDraw draw;
     public NeuralNetworkColorer colorer;
     public bool sigmoid = false;
-   
+    public float learningRate = 0.2f;
 
     private void Awake()
     {
         network = new NeuralNetwork(new[] { 2, 3, 2 }, sigmoid);
+        if (draw.learning)
+        {
+            foreach (var layer in network.layers)
+            {
+                //layer.InitRandomWeights();
+            }
+        }
     }
 
     public void SetWeight(int layer, int x, int y, double value)
@@ -48,32 +56,12 @@ public class MultilayerNeuralNetwork : MonoBehaviour
         }
     }
 
-    public double DataPointCost(double guess, double expected)
-    {
-        //Debug.Log(guess.ToString("F6") + " "  + expected);
-        var semival =  (expected - guess);
-        return semival * semival;
-    }
-
-    public double Cost(CafeData data)
-    {
-        double[] outputs = network.CalculateOutputs(draw.NormalizeInput(data));
-        double[] expected = data.ExpectedOuput();
-        double cost = 0;
-        for (int i = 0; i < outputs.Length; i++)
-        {
-            cost += DataPointCost(outputs[i], expected[i]);
-        }
-
-        return cost;
-    }
-
     public double CalculateCosts(DataSetCafe set)
     {
         double totalCost = 0;
         for (int i = 0; i < set.data.Count; i++)
         {
-            var cost = Cost(set.data[i]);
+            var cost = network.Cost(set.data[i]);
             totalCost += cost;
     
         }
@@ -82,7 +70,7 @@ public class MultilayerNeuralNetwork : MonoBehaviour
 
     public int Correct(CafeData data)
     {
-        int output = network.GetMaxOutput(draw.NormalizeInput(data));
+        int output = network.GetMaxOutput(data.Input());
         int expected = data.valid ? 0 : 1;
 
         return output == expected ? 1 : 0;
@@ -98,12 +86,28 @@ public class MultilayerNeuralNetwork : MonoBehaviour
 
         return totalCorrect;
     }
+
+    public void Learn(DataSetCafe dataSet)
+    {
+        CafeData[] cafe = new CafeData[5];
+        for (int i = 0; i < 5; i++)
+        {
+            cafe[i] = dataSet.data[Random.Range(0, dataSet.data.Count)];
+        }
+        foreach (var c in dataSet.data)
+        {
+            network.Learn(c, learningRate);
+        }
+        //UpdateVisuals();
+      
+    }
 }
 
 public class NeuralNetwork
 {
     public Layer[] layers;
     public bool sigmoid = false;
+    public const float H = 0.0001f;
     public NeuralNetwork(int[] layerSizes, bool sigmoid)
     {
         layers = new Layer[layerSizes.Length - 1];
@@ -114,6 +118,27 @@ public class NeuralNetwork
         this.sigmoid = sigmoid;
     }
 
+    public double Cost(CafeData data)
+    {
+        double[] outputs = CalculateOutputs(data.Input());
+        double[] expected = data.ExpectedOuput();
+        double cost = 0;
+        for (int i = 0; i < outputs.Length; i++)
+        {
+            cost += DataPointCost(outputs[i], expected[i]);
+        }
+
+        return cost;
+    }
+    
+    public double DataPointCost(double guess, double expected)
+    {
+        //Debug.Log(guess.ToString("F6") + " "  + expected);
+        var semival =  (expected - guess);
+        return semival * semival;
+    }
+    
+    
     public double[] CalculateOutputs(double[] inputs)
     {
         for (int i = 0; i < layers.Length; i++)
@@ -170,23 +195,81 @@ public class NeuralNetwork
 
         return weigths;
     }
+    
+    public void Learn(CafeData learnData, float learnRate)
+    {
+        double cost = Cost(learnData);
+        foreach (var layer in layers)
+        {
+            for (int i = 0; i < layer.lengthOut; i++)
+            {
+                layer.biases[i] += H;
+                double newCost = Cost(learnData);
+                layer.biases[i] -= H;
+                layer.costGradientBiases[i] = (newCost - cost) / H;
+
+                for (int j = 0; j < layer.lengthIn; j++)
+                {
+                    layer.weights[j, i] += H;
+                    double newCostW = Cost(learnData);
+                    layer.weights[j, i] -= H;
+                    layer.costGradientWeights[j, i] = (newCostW - cost) / H;
+                }
+            }
+        }
+
+        //Importante no aplciar el gradiente en el mismo loop en el que se asigna, ya que estariamos actualizando con datos alterados.
+        foreach (var layer in layers)
+        {
+            layer.ApplyGradient(learnRate);
+        }
+        
+        
+    }
 }
 public class Layer
 {
     public int lengthIn, lengthOut;
     public double[,] weights;
     public double[] biases;
+    public double[,] costGradientWeights;
+    public double[] costGradientBiases;
     public bool sigmoid;
-    
+    public const float H = 0.0001f;
     public Layer(int numIn,int numOut, bool sigmoid)
     {
         this.sigmoid = sigmoid;
         lengthIn = numIn;
         lengthOut = numOut;
         weights = new double[numIn, numOut];
+        costGradientWeights = new double[numIn, numOut];
         biases = new double[numOut];
+        costGradientBiases = new double[numOut];
     }
 
+    public void ApplyGradient(float learnRate)
+    {
+        for (int i = 0; i < lengthOut; i++)
+        {
+            for (int j = 0; j < lengthIn; j++)
+            {
+                weights[j, i] -= costGradientWeights[j, i] * learnRate;
+            }
+            biases[i] -= costGradientBiases[i] * learnRate;
+        }
+    }
+    public void InitRandomWeights()
+    {
+        for (int i = 0; i < weights.GetLength(0); i++)
+        {
+            for (int j = 0; j < weights.GetLength(1); j++)
+            {
+                float value = Random.Range(-1f, 1f);
+                value = value / Mathf.Sqrt(lengthIn);
+                weights[i, j] = value;
+            }
+        }
+    }
     public double[] CalculateOutputs(double[] inputs)
     {
         double[] woghtedResults = WeightResult(weights, inputs, biases);

@@ -14,7 +14,8 @@ public class UIWeights : MonoBehaviour
         yield return null;
         foreach (var slider in sliders)
         {
-            slider.value = Random.Range(-range, range);
+            //if(!network.draw.learning)
+                slider.value = Random.Range(-range, range);
         }
         network.UpdateVisuals();
         canUpdateVisuals = true;
