@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Data;
+using TMPro;
 using UnityEngine;
 using Random = UnityEngine.Random;
 
@@ -12,15 +13,24 @@ public class MultilayerNeuralNetwork : MonoBehaviour
     public NeuralNetworkColorer colorer;
     public bool sigmoid = false;
     public float learningRate = 0.2f;
+    public TextMeshProUGUI learningRateText;
+
+    public void SetLearningRate(float learningRate)
+    {
+        this.learningRate = learningRate;
+        if(learningRateText != null)
+            learningRateText.text = "Valor de aprendizaje: " + learningRate.ToString("F2");
+    }
 
     private void Awake()
     {
         network = new NeuralNetwork(new[] { 2, 3, 2 }, sigmoid);
+        SetLearningRate(learningRate);
         if (draw.learning)
         {
             foreach (var layer in network.layers)
             {
-                //layer.InitRandomWeights();
+                layer.InitRandomWeights();
             }
         }
     }
@@ -40,9 +50,10 @@ public class MultilayerNeuralNetwork : MonoBehaviour
         return network.GetMaxOutput(values);
     }
 
-    public void UpdateVisuals()
+    public void UpdateVisuals(bool updateText = true)
     {
-        draw.UpdateTexture();
+        if(updateText)
+            draw.UpdateTextureFull();
         var weights = network.GetWeights();
         for (int i = 0; i < weights.Count; i++)
         {
@@ -98,7 +109,7 @@ public class MultilayerNeuralNetwork : MonoBehaviour
         {
             network.Learn(c, learningRate);
         }
-        //UpdateVisuals();
+        UpdateVisuals(false);
       
     }
 }

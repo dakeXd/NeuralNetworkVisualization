@@ -31,109 +31,200 @@ public class AdvancedDraw : MonoBehaviour
     private DataSetCafe normalizedSet;
     public MultilayerNeuralNetwork neurones;
 
-    public TextMeshProUGUI costText, correctText;
+    public TextMeshProUGUI costText, correctText, iterationTime, updateTime;
     public bool calculateCosts = false;
     public bool learning = false;
-    private float nextUpdate, nextDraw;
+    //private float nextUpdate, nextDraw;
     //private float updateTime = 0.0001f;
-    private float drawTime = 0.2f;
+   // private float drawTime = 0.2f;
     private bool complete = false;
     private float completeCost = 0.1f;
+    public int aproxDrawSize = 7;
+    private int halfAproxDraw;
     private int iteration;
+    public int updateScreenTIme = 10;
+    public bool createRandomData = false;
+    public int randomDataSize = 100;
+    
     private void Start()
     {
+        //Para poder hacer areas simetricas al dibujar aproximadamente el efecto de la red neuronal, el area afectada debe ser inpar
+        if (aproxDrawSize % 2 == 0)
+            aproxDrawSize++;
+        SetScreenTime(updateScreenTIme);
+        //El radio de efecto es la mitad
+        halfAproxDraw = (aproxDrawSize - 1) / 2;
+        //La textura se genera en tiempo de ejecucion para evitar problemas con los assets.
         texture = new Texture2D(TextureSize, TextureSize);
         Sprite spirte = Sprite.Create(texture, new Rect(0, 0, TextureSize, TextureSize), new Vector2(0.5f, 0.5f), 100);
         GetComponent<SpriteRenderer>().sprite = spirte;
-        setCafe = CreateTestSet();
+        //Se crea un set de data random de ser necesario
+        if(createRandomData)
+            setCafe = CreateTestSet();
+        //Para alimentar la red neuronal, el set de datos debe estar normalizado en la misma medida que el resto del sistema
         normalizedSet = GetNormalziedSet(setCafe);
-        UpdateTexture();
-       // nextUpdate = (Time.time)  + updateTime;
-        nextDraw = (Time.time)  + drawTime;
+        UpdateTextureFull();
+        
         complete = false;
         iteration = 0;
     }
 
     private void Update()
     {
+        //Se realiza una pasada de aprendizaje por el set de datos si el aprendizaje esta activado
         if (!complete && learning)
         {
-            //if ((Time.time) > nextUpdate)
-            //{ 
-                neurones.Learn(normalizedSet);
-                UpdateCost();
-                iteration++;
-  
-               // nextUpdate = (Time.time)  + updateTime;
-               if (iteration % 10 == 0)
-               {
-                   Debug.Log("Iteration: " + iteration);
-//                   UpdateTexture();
-                   UpdateTexture();
-               }
-                   
-            //}
-            if ((Time.time) > nextDraw)
+            neurones.Learn(normalizedSet);
+            UpdateCost();
+            iteration++;
+            //Actualziar la textura es una funcion muy costosa que ralentiza enormemente el sistema, asique se llama cada cierta  cantida de iteraciones
+            if (iteration % updateScreenTIme == 0)
             {
-               
-                nextDraw = (Time.time)  + drawTime;
+               iterationTime.text = "Iteration " + iteration;
+               UpdateTextureAprox();
             }
-           
         }
     }
 
-
-    public void UpdateTexture()
+    /**
+     * Actualiza la textura aproximadamente.
+     * En vez de comprobar la red para cada pixel de la textura, se calcula un pixel cada aproxDrawSize pixeles.
+     * Todos los pixeles dentro de un area de radio halfAproxDraw se dibujaran del mismo color.
+     * De esta forma, para una textura de 512x512 en vez de calcular el resultado de la red 262144 veces
+     * Con un aproxDrawSize de 7 se calcularia solo 5350 veces.
+     */
+    public void UpdateTextureAprox()
     {
-            Color32[] colors = new Color32[texture.width * texture.height]; ;
-            for (int y = 0; y < texture.height; y++)
+        //Array con todos los nuevos pixeles de la textura
+        Color32[] colors = new Color32[texture.width * texture.height]; 
+        
+        //Se recorren todos los pixeles de la textura
+        for (int y = 0; y < texture.height; y+=aproxDrawSize)
+        {
+            for (int x = 0; x < texture.width; x+=aproxDrawSize)
             {
-                for (int x = 0; x < texture.width; x++)
+                //Comprobar que el pixel a calcular no esta fuera de la textura
+                if (y < 0 || y >= texture.height || x < 0 || x > texture.width)
+                    continue;
+                
+                //Comprobar si el pixel es un pixel de margen (eje de coordenadas)
+                bool margin = x <= MarginPx && (x >= (MarginPx - MarginDraw)) || (y <= MarginPx && (y >= (MarginPx - MarginDraw)));
+                
+                //El color de este pixel puede ser el del margen, y si no lo es, el color de calcular el resultado de la red neuronal en este punto
+                Color color = margin ? laneColor :
+                    neurones.CalculateOutput(new[] { normalizeValue(x), normalizeValue(y) }) == 0 ? correctColor :
+                    incorrectColor;
+                
+                //A todos los pixeles dentro de un area de halfAproxDraw se les aplicara este mismo color
+                for (int i = y - halfAproxDraw; i <= y + halfAproxDraw; i++)
                 {
-                    bool margin = x <= MarginPx && (x >= (MarginPx - MarginDraw)) || (y <= MarginPx && (y >= (MarginPx - MarginDraw)));
-
-                    if (margin)
+                    //Comprobar si estamos dentro de la textura
+                    if(i < 0 || i >= texture.height)
+                        continue;
+                    
+                    for (int j = x - halfAproxDraw; j <= x + halfAproxDraw; j++)
                     {
-                        SetColor(colors, x, y, laneColor);
-                        //texture.SetPixel(x, y, laneColor);
-                    }
-                    else
-                    {
-                        SetColor(colors, x, y,neurones.CalculateOutput(new []{ normalizeValue(x), normalizeValue(y)}) == 0 ? correctColor : incorrectColor);
-                        //texture.SetPixel(x, y, neurones.CalculateOutput(new []{ normalizeValue(x), normalizeValue(y)}) == 0 ? correctColor : incorrectColor);
+                        //Comprobar si estamos dentro de la textura
+                        if(j < 0 || j >= texture.width)
+                            continue;
+                        
+                        SetColor(colors, j, i, color);
                     }
                 }
             }
-            DrawCafe(colors);
-            texture.SetPixels32(colors);
-            if(calculateCosts)
-                UpdateCost();
-            texture.Apply(false);
         }
+            
+        //Dibujar como puntos el set de datos
+        DrawCafe(colors);
 
+        //Colocar todos los colores en la textura
+        texture.SetPixels32(colors);
+  
+        //Actualizar el coste de la red
+        if(calculateCosts)
+            UpdateCost();
+        
+        //Aplicar la nueva textura
+        texture.Apply(false);
+    }
+    
+    /**
+     * Actualiza la textura con exactitud.
+     * Para cada pixel de la textura calcula el resultado de la red y aplica su color en el
+     */
+    public void UpdateTextureFull()
+    {
+        Color32[] colors = new Color32[texture.width * texture.height]; ;
+        
+        //Para cada pixel de la textura
+        for (int y = 0; y < texture.height; y++)
+        {
+            for (int x = 0; x < texture.width; x++)
+            {
+                //Comprobar si el pixel es un pixel de margen (eje de coordenadas)
+                bool margin = x <= MarginPx && (x >= (MarginPx - MarginDraw)) || (y <= MarginPx && (y >= (MarginPx - MarginDraw)));
+                
+                //Asignar el color del pixel dependiendo si es un pixel de margen o del resutltado de la red
+                Color color = margin ? laneColor :
+                    neurones.CalculateOutput(new[] { normalizeValue(x), normalizeValue(y) }) == 0 ? correctColor :
+                    incorrectColor;
+                SetColor(colors, x, y, color);
+            }
+        }
+        
+        //Dibujar el set de datos y aplicar la nueva textura
+        DrawCafe(colors);
+        texture.SetPixels32(colors);
+        texture.Apply(false);
+    }
+
+    /**
+     * Asigna un color con una posicion en un sistema de dos dimensiones a un array de una dimension
+     */
     private void SetColor(Color32[] colors, int x, int y, Color32 color)
     {
         int pos = texture.width * y + x;
         colors[pos] = color;
     }
 
+    /**
+     * Actualiza el coste de la red y las respuestas correctas y los muestra en la pantalla
+     */
     public void UpdateCost()
     {
         double cost = neurones.CalculateCosts(normalizedSet);
         int correctAnswers = neurones.CalculateCorrects(normalizedSet);
+        
+        //Si se ha pasado a tener todos las respuestas correctas con un coste inferior al delimitado, se considera
+        //que la red ha completado su aprendizajo y se actualiza la textura con la maxima resolucion.
         var completes = (cost < completeCost && correctAnswers == normalizedSet.data.Count);
-        if(completes != complete)
-            UpdateTexture();
-        complete = completes;
+        if (completes && !complete)
+        {
+            complete = true;   
+            Debug.Log("CompletedDrawing");
+            UpdateTextureFull();
+        }
+        else
+        {
+            complete = completes;
+        }
+
+        //Mostrar los resultados en pantalla
         costText.text = "Cost: " + cost.ToString("F6");
         correctText.text = "Correct nodes: " + correctAnswers + "/" + normalizedSet.data.Count;
     }
+    
+    /**
+     * Dibujar del set de datos, se necesita pasar el array de colores donde se almacena la informacion de la textura
+     */
     public void DrawCafe(Color32[] colors)
     {
         foreach (var cafe in setCafe.data)
         {
+            //normalizar los valores para el sistema.
             var x = normalizeValue( MarginPx + cafe.temperatura * zoomX);
             var y =normalizeValue( MarginPx + cafe.altitud * zoomY);
+            //Cada punto sera represntado con un circulo
             DrawSphere(x, y, pointSize, cafe.valid ? Color.green   : Color.red, colors);
         }
     }
@@ -157,13 +248,14 @@ public class AdvancedDraw : MonoBehaviour
     public DataSetCafe CreateTestSet()
     {
         DataSetCafe normalized = ScriptableObject.CreateInstance<DataSetCafe>();
-        normalized.data = new List<CafeData>(100);
-        for (int i = 0; i < 100; i++)
+        normalized.data = new List<CafeData>(randomDataSize);
+        int variance = Random.Range(10000, 30000);
+        for (int i = 0; i < randomDataSize; i++)
         {
             CafeData d= new CafeData();
             d.altitud = Random.Range(0, 3000);
             d.temperatura = Random.Range(0, 40);
-            d.valid = (d.temperatura * d.altitud < 20000);
+            d.valid = (d.temperatura * d.altitud < variance );
             normalized.data.Add(d);
         }
 
@@ -199,6 +291,21 @@ public class AdvancedDraw : MonoBehaviour
             }
         }
  
+    }
+
+    public void SetScreenTime(int screenTime)
+    {
+        updateScreenTIme = screenTime;
+        if (updateTime != null)
+            updateTime.text = "Frecuencia actualización visual: " + screenTime;
+    }
+    
+    public void SetScreenTime(float screenTime)
+    {
+        int sc = Mathf.FloorToInt(screenTime);
+        updateScreenTIme = sc;
+        if (updateTime != null)
+            updateTime.text = "Frecuencia actualización visual: " + sc;
     }
 
     private double normalizeValue(int v)
