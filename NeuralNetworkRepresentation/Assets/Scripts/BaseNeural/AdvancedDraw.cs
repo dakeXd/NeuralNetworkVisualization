@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using TMPro;
 using Unity.Mathematics;
 using UnityEngine;
+using UnityEngine.UI;
 using Random = UnityEngine.Random;
 
 public class AdvancedDraw : MonoBehaviour
@@ -51,6 +52,7 @@ public class AdvancedDraw : MonoBehaviour
         //Para poder hacer areas simetricas al dibujar aproximadamente el efecto de la red neuronal, el area afectada debe ser inpar
         if (aproxDrawSize % 2 == 0)
             aproxDrawSize++;
+        updateScreenTIme =   PlayerPrefs.GetInt("ScreenUpdateTime", updateScreenTIme);
         SetScreenTime(updateScreenTIme);
         //El radio de efecto es la mitad
         halfAproxDraw = (aproxDrawSize - 1) / 2;
@@ -255,7 +257,7 @@ public class AdvancedDraw : MonoBehaviour
             CafeData d= new CafeData();
             d.altitud = Random.Range(0, 3000);
             d.temperatura = Random.Range(0, 40);
-            d.valid = (d.temperatura * d.altitud < variance );
+            d.valid = (d.temperatura * d.altitud < variance && d.temperatura * d.altitud > 5000 );
             normalized.data.Add(d);
         }
 
@@ -296,16 +298,25 @@ public class AdvancedDraw : MonoBehaviour
     public void SetScreenTime(int screenTime)
     {
         updateScreenTIme = screenTime;
+        PlayerPrefs.SetInt("ScreenUpdateTime", screenTime);
         if (updateTime != null)
+        {
             updateTime.text = "Frecuencia actualización visual: " + screenTime;
+            updateTime.transform.parent.GetComponentInChildren<Slider>().SetValueWithoutNotify(screenTime);
+        }
+          
     }
     
     public void SetScreenTime(float screenTime)
     {
         int sc = Mathf.FloorToInt(screenTime);
+        PlayerPrefs.SetInt("ScreenUpdateTime", sc);
         updateScreenTIme = sc;
         if (updateTime != null)
+        {
             updateTime.text = "Frecuencia actualización visual: " + sc;
+            updateTime.transform.parent.GetComponentInChildren<Slider>().SetValueWithoutNotify(sc);
+        }
     }
 
     private double normalizeValue(int v)

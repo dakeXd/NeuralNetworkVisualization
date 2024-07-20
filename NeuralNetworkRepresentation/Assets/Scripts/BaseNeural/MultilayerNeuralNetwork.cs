@@ -2,8 +2,10 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Data;
+using System.Drawing;
 using TMPro;
 using UnityEngine;
+using UnityEngine.UI;
 using Random = UnityEngine.Random;
 
 public class MultilayerNeuralNetwork : MonoBehaviour
@@ -14,17 +16,25 @@ public class MultilayerNeuralNetwork : MonoBehaviour
     public bool sigmoid = false;
     public float learningRate = 0.2f;
     public TextMeshProUGUI learningRateText;
-
+    public bool batchExamples = false;
+    public int batchingSize = 20;
+    private int lastBatch = 0;
     public void SetLearningRate(float learningRate)
     {
         this.learningRate = learningRate;
-        if(learningRateText != null)
+        PlayerPrefs.SetFloat("LearnignRate", learningRate);
+        if (learningRateText != null)
+        {
             learningRateText.text = "Valor de aprendizaje: " + learningRate.ToString("F2");
+            learningRateText.transform.parent.GetComponentInChildren<Slider>().SetValueWithoutNotify(learningRate);
+        }
+            
     }
 
     private void Awake()
     {
         network = new NeuralNetwork(new[] { 2, 3, 2 }, sigmoid);
+        learningRate = PlayerPrefs.GetFloat("LearnignRate", learningRate);
         SetLearningRate(learningRate);
         if (draw.learning)
         {
@@ -100,12 +110,17 @@ public class MultilayerNeuralNetwork : MonoBehaviour
 
     public void Learn(DataSetCafe dataSet)
     {
-        CafeData[] cafe = new CafeData[5];
-        for (int i = 0; i < 5; i++)
+        List<CafeData> cafe = new List<CafeData>(batchingSize);
+        for (int i = 0; i < batchingSize; i++)
         {
-            cafe[i] = dataSet.data[Random.Range(0, dataSet.data.Count)];
+            lastBatch++;
+            if (lastBatch >= dataSet.data.Count)
+                lastBatch = 0;
+            cafe.Add(dataSet.data[lastBatch]);
         }
-        foreach (var c in dataSet.data)
+
+        var set = batchExamples ? cafe : dataSet.data;
+        foreach (var c in set)
         {
             network.Learn(c, learningRate);
         }
