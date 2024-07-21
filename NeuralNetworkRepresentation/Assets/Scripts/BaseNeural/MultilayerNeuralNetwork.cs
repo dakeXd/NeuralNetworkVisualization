@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Data;
 using System.Drawing;
 using TMPro;
+using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.UI;
 using Random = UnityEngine.Random;
@@ -18,6 +19,7 @@ public class MultilayerNeuralNetwork : MonoBehaviour
     public TextMeshProUGUI learningRateText;
     public bool batchExamples = false;
     public int batchingSize = 20;
+    public bool backPropagation = false;
     private int lastBatch = 0;
     public void SetLearningRate(float learningRate)
     {
@@ -33,7 +35,7 @@ public class MultilayerNeuralNetwork : MonoBehaviour
 
     private void Awake()
     {
-        network = new NeuralNetwork(new[] { 2, 3, 2 }, sigmoid);
+        network = new NeuralNetwork(new[] { 2, 3, 2 }, sigmoid, backPropagation);
         learningRate = PlayerPrefs.GetFloat("LearnignRate", learningRate);
         SetLearningRate(learningRate);
         if (draw.learning)
@@ -132,16 +134,17 @@ public class MultilayerNeuralNetwork : MonoBehaviour
 public class NeuralNetwork
 {
     public Layer[] layers;
-    public bool sigmoid = false;
+    public bool sigmoid = false, backpropagation = false;
     public const float H = 0.0001f;
-    public NeuralNetwork(int[] layerSizes, bool sigmoid)
+    public NeuralNetwork(int[] layerSizes, bool sigmoid, bool backpropagation)
     {
         layers = new Layer[layerSizes.Length - 1];
         for (int i = 0; i < layerSizes.Length -1; i++)
         {
-            layers[i] = new Layer(layerSizes[i], layerSizes[i  + 1], sigmoid);
+            layers[i] = new Layer(layerSizes[i], layerSizes[i  + 1], sigmoid, backpropagation);
         }
         this.sigmoid = sigmoid;
+        this.backpropagation = backpropagation;
     }
 
     public double Cost(CafeData data)
@@ -163,6 +166,12 @@ public class NeuralNetwork
         var semival =  (expected - guess);
         return semival * semival;
     }
+    
+    public  double DataPointCostDerivative(double guess, double expected)
+    {
+        return 2 * (guess - expected);
+    }
+
     
     
     public double[] CalculateOutputs(double[] inputs)
@@ -224,6 +233,28 @@ public class NeuralNetwork
     
     public void Learn(CafeData learnData, float learnRate)
     {
+        if (backpropagation)
+        {
+            CalculateBackpropagationGradient(learnData);
+        }
+        else
+        {
+            CalculateGradient(learnData);
+        }
+        
+        //Importante no aplciar el gradiente en el mismo loop en el que se asigna, ya que estariamos actualizando con datos alterados.
+        foreach (var layer in layers)
+        {
+            layer.ApplyGradient(learnRate);
+        }
+        if(backpropagation)
+            ClearAllCostGradients();
+        
+        
+    }
+
+    private void CalculateGradient(CafeData learnData)
+    {
         double cost = Cost(learnData);
         foreach (var layer in layers)
         {
@@ -243,34 +274,70 @@ public class NeuralNetwork
                 }
             }
         }
+    }
 
-        //Importante no aplciar el gradiente en el mismo loop en el que se asigna, ya que estariamos actualizando con datos alterados.
-        foreach (var layer in layers)
+    private void CalculateBackpropagationGradient(CafeData learnData)
+    {
+        //actualizar todos los valores de la red
+        CalculateOutputs(learnData.Input());
+        //Pesos en la ultima capa
+        //
+        //                                   L     L
+        //                                 dz     da    dC
+        //      L-1      L       L           j     j 
+        //     a * sig'(dz) * 2(a - y)^2 = ___ * ___ * ___  
+        //      j        j      j   j        L-1    L     L
+        //                                 dw     dz    da
+        //                                   jk    j     j
+        Layer output = layers[layers.Length - 1];
+        double[] neuronValues = output.CalculateOutpuNeuronDerivativeValues(learnData.ExpectedOuput());
+        output.UpdateGradientsBackP(neuronValues);
+
+        for (int hiddenLayer = layers.Length - 2; hiddenLayer >= 0; hiddenLayer--)
         {
-            layer.ApplyGradient(learnRate);
+            Layer l = layers[hiddenLayer];
+            neuronValues = l.CalculateHiddenLayerNeuronDerivativeValues(neuronValues, layers[hiddenLayer+1]);
+            l.UpdateGradientsBackP(neuronValues);
         }
         
         
     }
+    public void ClearAllCostGradients()
+    {
+        foreach (var layer in layers)
+        {
+            layer.ClearGradients();
+        }
+    }
+   
 }
 public class Layer
 {
+    //layer normal info
     public int lengthIn, lengthOut;
     public double[,] weights;
     public double[] biases;
+    //Learning layer data
     public double[,] costGradientWeights;
     public double[] costGradientBiases;
-    public bool sigmoid;
+    private double[] weightedInputs;
+    private double[] nodeActOutputs;
+    private double[] inputs;
+    private bool sigmoid, backpropagation;
     public const float H = 0.0001f;
-    public Layer(int numIn,int numOut, bool sigmoid)
+    public Layer(int numIn,int numOut, bool sigmoid, bool backpropagation)
     {
         this.sigmoid = sigmoid;
+        this.backpropagation = backpropagation;
         lengthIn = numIn;
         lengthOut = numOut;
+        inputs = new double[numIn];
         weights = new double[numIn, numOut];
         costGradientWeights = new double[numIn, numOut];
         biases = new double[numOut];
         costGradientBiases = new double[numOut];
+        nodeActOutputs = new double[numOut];
+        weightedInputs = new double[numOut];
     }
 
     public void ApplyGradient(float learnRate)
@@ -296,10 +363,12 @@ public class Layer
             }
         }
     }
-    public double[] CalculateOutputs(double[] inputs)
+    public double[] CalculateOutputs(double[] inputsIn)
     {
-        double[] woghtedResults = WeightResult(weights, inputs, biases);
-        return ActivateNeurons(woghtedResults);
+        this.inputs = inputsIn;
+        weightedInputs = WeightResult(weights, inputs, biases);
+        ActivateNeurons(weightedInputs);
+        return nodeActOutputs;
     }
 
     public double[] ActivateNeurons(double[] weighted)
@@ -308,19 +377,20 @@ public class Layer
         {
             for (int i = 0; i < weighted.Length; i++)
             {
-                weighted[i] = SigmoidActivation(weighted[i]);
+                nodeActOutputs[i] = SigmoidActivation(weighted[i]);
             }
         }
         else
         {
             for (int i = 0; i < weighted.Length; i++)
             {
-                weighted[i] = StepActivation(weighted[i]);
+                nodeActOutputs[i] = StepActivation(weighted[i]);
             }
         }
 
-        return weighted;
+        return nodeActOutputs;
     }
+    
     public double StepActivation(double weightedInput)
     {
         return weightedInput > 0 ? 1 : 0;
@@ -331,7 +401,14 @@ public class Layer
         return 1 / (1 + Math.Exp(-value));
     }
 
-    
+    public static double SigmoidActivationDerivative(double value)
+    {
+        var activation = SigmoidActivation(value);
+        return activation * (1 - activation);
+        //return SigmoidActivation(1 - activation);
+    }
+
+
     public  double[] WeightResult(double[,] w, double[] x, double[] b)
     {
         if (w.GetLength(0) != x.GetLength(0))
@@ -352,11 +429,95 @@ public class Layer
             {
                 value += w[i, j] * x[i];
             }
-
             result[j] = value + b[j];
         }
 
         return result;
+    }
+    
+    public void ClearGradients(){
+        for (int j = 0; j < weights.GetLength(1); j++)
+        {
+            double value = 0;
+            for (int i = 0; i < weights.GetLength(0); i++)
+            {
+                costGradientWeights[i, j] = 0;
+            }
+
+            costGradientBiases[j] = 0;
+        }   
+    }
+    public  double DataPointCostDerivative(double guess, double expected)
+    {
+        return 2 * (guess - expected);
+    }
+    public double[] CalculateOutpuNeuronDerivativeValues(double[] expectedOut)
+    {
+        double[] neuronValues = new double[expectedOut.Length];
+        for (int i = 0; i < expectedOut.Length; i++)
+        {
+            //                          L
+        //                            da    dC
+        //          L       L           j 
+        // o= sig'(dz) * 2(a - y)^2 = ___ * ___ 
+        //          j      j   j        L     L
+        //                            dz    da
+        //                              j     j
+        neuronValues[i] = SigmoidActivationDerivative(weightedInputs[i]) *
+                          DataPointCostDerivative(nodeActOutputs[i], expectedOut[i]);
+        }
+
+        return neuronValues;
+    }
+    
+    
+    public void UpdateGradientsBackP(double[] neuronValues)
+    {
+        //           L
+        //   dC    dz
+        //           j    L   L+1         L+n    L-1  L   L+1         L+n
+        //  ___ = ___ * [h * h *   ... * o]  =  a * [h * h *   ... * o]
+        //     L     L                           j
+        //   cw    dw
+        //     jk    jk
+        // Para lso bias se cambio w por 1
+        for (int out_ = 0; out_ < lengthOut ; out_++)
+        {
+            for (int in_ = 0; in_ < lengthIn ; in_++)
+            {
+                //El coste de gradiente es el sumatorio de todas las varianzas causadas por el peso inicial
+                costGradientWeights[in_, out_] += inputs[in_] * neuronValues[out_];
+            }
+
+            costGradientBiases[out_] += neuronValues[out_]; //*1
+        }
+    }
+    
+    public double[] CalculateHiddenLayerNeuronDerivativeValues(double[] nextLayerValues, Layer nextLayer)
+    {
+        double[] neuronValues = new double[lengthOut];
+        for (int originNeuron = 0; originNeuron < lengthOut; originNeuron++)
+        {
+            double newNeuronValue = 0;
+            for (int objetiveNeuron = 0; objetiveNeuron < nextLayerValues.Length; objetiveNeuron++)
+            {
+                //    L-1    L-1
+                //   dz    da
+                //    j      j        L-1        L-1
+                //  ___ * ___  * p  = w  *  sig'(z) = h
+                //    L-2    L-1      jk         j
+                //   da    dz
+                //    jk     j
+                //Debug.Log("[In: " + lengthIn + ", Out: " + lengthOut + "] origin " + originNeuron + ", objetive " + objetiveNeuron);
+                //Debug.Log("NextLayer weights [" + nextLayer.weights.GetLength(0) + "x" + nextLayer.weights.GetLength(1) +"], nextLayerValues: " + nextLayerValues.Length);
+                newNeuronValue += (nextLayer.weights[originNeuron, objetiveNeuron] * nextLayerValues[objetiveNeuron]);
+            }
+
+            newNeuronValue *= SigmoidActivationDerivative(weightedInputs[originNeuron]);
+            neuronValues[originNeuron] = newNeuronValue;
+        }
+        
+        return neuronValues;
     }
 }
 

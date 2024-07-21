@@ -46,6 +46,7 @@ public class AdvancedDraw : MonoBehaviour
     public int updateScreenTIme = 10;
     public bool createRandomData = false;
     public int randomDataSize = 100;
+    private float startTime;
     
     private void Start()
     {
@@ -69,10 +70,12 @@ public class AdvancedDraw : MonoBehaviour
         
         complete = false;
         iteration = 0;
+        startTime = Time.time;
     }
 
     private void Update()
     {
+        
         //Se realiza una pasada de aprendizaje por el set de datos si el aprendizaje esta activado
         if (!complete && learning)
         {
@@ -82,8 +85,11 @@ public class AdvancedDraw : MonoBehaviour
             //Actualziar la textura es una funcion muy costosa que ralentiza enormemente el sistema, asique se llama cada cierta  cantida de iteraciones
             if (iteration % updateScreenTIme == 0)
             {
-               iterationTime.text = "Iteration " + iteration;
-               UpdateTextureAprox();
+                
+                iterationTime.text = "Iteration " + iteration;
+                Debug.Log("Iteration " + iteration + ", elapsed: " + (Time.time - startTime) + " seconds");
+                startTime = Time.time;
+                UpdateTextureAprox();
             }
         }
     }
@@ -205,6 +211,8 @@ public class AdvancedDraw : MonoBehaviour
             complete = true;   
             Debug.Log("CompletedDrawing");
             UpdateTextureFull();
+            if(iterationTime!=null)
+                iterationTime.text = "Iteration " + iteration;
         }
         else
         {
@@ -257,7 +265,7 @@ public class AdvancedDraw : MonoBehaviour
             CafeData d= new CafeData();
             d.altitud = Random.Range(0, 3000);
             d.temperatura = Random.Range(0, 40);
-            d.valid = (d.temperatura * d.altitud < variance && d.temperatura * d.altitud > 5000 );
+            d.valid = (d.temperatura * d.altitud < variance);
             normalized.data.Add(d);
         }
 

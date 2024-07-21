@@ -14,7 +14,6 @@ public class NeuralNetworkColorer : MonoBehaviour
     public void SetWeightColor(int index, float weight)
     {
         Color c = weight > 0 ? positiveColor : negativeColor;
-        Debug.Log(weight);
         if (weight == 0)
         {
             c.a = 0;
