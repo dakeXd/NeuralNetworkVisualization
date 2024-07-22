@@ -32,7 +32,7 @@ public class AdvancedDraw : MonoBehaviour
     private DataSetCafe normalizedSet;
     public MultilayerNeuralNetwork neurones;
 
-    public TextMeshProUGUI costText, correctText, iterationTime, updateTime;
+    public TextMeshProUGUI costText, correctText, iterationTime, updateTime, iterationTimeText;
     public bool calculateCosts = false;
     public bool learning = false;
     //private float nextUpdate, nextDraw;
@@ -46,7 +46,7 @@ public class AdvancedDraw : MonoBehaviour
     public int updateScreenTIme = 10;
     public bool createRandomData = false;
     public int randomDataSize = 100;
-    private float startTime;
+    private float startTime, originTime;
     
     private void Start()
     {
@@ -71,6 +71,7 @@ public class AdvancedDraw : MonoBehaviour
         complete = false;
         iteration = 0;
         startTime = Time.time;
+        originTime = Time.time;
     }
 
     private void Update()
@@ -80,7 +81,6 @@ public class AdvancedDraw : MonoBehaviour
         if (!complete && learning)
         {
             neurones.Learn(normalizedSet);
-            UpdateCost();
             iteration++;
             //Actualziar la textura es una funcion muy costosa que ralentiza enormemente el sistema, asique se llama cada cierta  cantida de iteraciones
             if (iteration % updateScreenTIme == 0)
@@ -88,6 +88,8 @@ public class AdvancedDraw : MonoBehaviour
                 
                 iterationTime.text = "Iteration " + iteration;
                 Debug.Log("Iteration " + iteration + ", elapsed: " + (Time.time - startTime) + " seconds");
+                if (iterationTimeText != null)
+                    iterationTimeText.text = "Iteration time: " + ((Time.time - startTime) * 1000 / updateScreenTIme).ToString("F3") + " ms";
                 startTime = Time.time;
                 UpdateTextureAprox();
             }
@@ -180,6 +182,9 @@ public class AdvancedDraw : MonoBehaviour
             }
         }
         
+        if(calculateCosts) 
+            UpdateCost();
+        
         //Dibujar el set de datos y aplicar la nueva textura
         DrawCafe(colors);
         texture.SetPixels32(colors);
@@ -213,6 +218,8 @@ public class AdvancedDraw : MonoBehaviour
             UpdateTextureFull();
             if(iterationTime!=null)
                 iterationTime.text = "Iteration " + iteration;
+            if (iterationTimeText != null)
+                iterationTimeText.text = "Iteration time: " + ((Time.time - originTime) * 1000 / iteration).ToString("F3") + " ms";
         }
         else
         {
@@ -260,12 +267,21 @@ public class AdvancedDraw : MonoBehaviour
         DataSetCafe normalized = ScriptableObject.CreateInstance<DataSetCafe>();
         normalized.data = new List<CafeData>(randomDataSize);
         int variance = Random.Range(10000, 30000);
+        int dataType = Random.Range(0, 2);
         for (int i = 0; i < randomDataSize; i++)
         {
             CafeData d= new CafeData();
             d.altitud = Random.Range(0, 3000);
             d.temperatura = Random.Range(0, 40);
-            d.valid = (d.temperatura * d.altitud < variance);
+            switch (dataType)
+            {
+                case 1:
+                    d.valid = d.temperatura * d.altitud > variance;
+                    break;
+                default:
+                    d.valid= d.temperatura * d.altitud < variance;
+                    break;
+            }
             normalized.data.Add(d);
         }
 
