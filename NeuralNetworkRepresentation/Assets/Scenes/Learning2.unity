@@ -14121,6 +14121,7 @@ MonoBehaviour:
   batchExamples: 0
   batchingSize: 30
   backPropagation: 1
+  inertia: 0
 --- !u!114 &1735348831
 MonoBehaviour:
   m_ObjectHideFlags: 0

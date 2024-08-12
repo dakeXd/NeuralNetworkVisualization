@@ -21,6 +21,8 @@ public class MultilayerNeuralNetwork : MonoBehaviour
     public int batchingSize = 20;
     public bool backPropagation = false;
     private int lastBatch = 0;
+    [Range(0f, 1f)]
+    public float inertia = 0;
     public void SetLearningRate(float learningRate)
     {
         this.learningRate = learningRate;
@@ -35,7 +37,7 @@ public class MultilayerNeuralNetwork : MonoBehaviour
 
     private void Awake()
     {
-        network = new NeuralNetwork(new[] { 2, 3, 2 }, sigmoid, backPropagation);
+        network = new NeuralNetwork(new[] { 2, 3, 2 }, sigmoid ? Activation.Sigmoid : Activation.Step, sigmoid ? Activation.Sigmoid : Activation.Step, backPropagation, inertia);
         learningRate = PlayerPrefs.GetFloat("LearnignRate", learningRate);
         SetLearningRate(learningRate);
         if (draw.learning)
@@ -84,7 +86,7 @@ public class MultilayerNeuralNetwork : MonoBehaviour
         double totalCost = 0;
         for (int i = 0; i < set.data.Count; i++)
         {
-            var cost = network.Cost(set.data[i]);
+            var cost = network.Cost(set.data[i].Input(), set.data[i].ExpectedOuput());
             totalCost += cost;
     
         }
@@ -124,52 +126,67 @@ public class MultilayerNeuralNetwork : MonoBehaviour
         var set = batchExamples ? cafe : dataSet.data;
         foreach (var c in set)
         {
-            network.Learn(c, learningRate);
+            network.Learn(c.Input(), c.ExpectedOuput(), learningRate);
         }
         UpdateVisuals(false);
       
     }
 }
-
+public enum Activation
+{
+    Step,
+    Sigmoid,
+    ReLU,
+    Softmax
+}
 public class NeuralNetwork
 {
+   
     public Layer[] layers;
-    public bool sigmoid = false, backpropagation = false;
+    public bool backpropagation = false;
     public const float H = 0.0001f;
-    public NeuralNetwork(int[] layerSizes, bool sigmoid, bool backpropagation)
+    public float inertia = 0;
+
+    
+    //public Activation activation = Activation.Step;
+    public NeuralNetwork(int[] layerSizes, Activation activation, Activation outputActivation, bool backpropagation, float inertia = 0)
     {
+        this.inertia = inertia;
         layers = new Layer[layerSizes.Length - 1];
         for (int i = 0; i < layerSizes.Length -1; i++)
         {
-            layers[i] = new Layer(layerSizes[i], layerSizes[i  + 1], sigmoid, backpropagation);
+            layers[i] = new Layer(layerSizes[i], layerSizes[i  + 1], i == (layerSizes.Length - 2) ? outputActivation : activation, backpropagation, inertia);
         }
-        this.sigmoid = sigmoid;
+        //this.activation = activation;
         this.backpropagation = backpropagation;
     }
 
-    public double Cost(CafeData data)
+    public double Cost(double[] inputs, double[] expected)
     {
-        double[] outputs = CalculateOutputs(data.Input());
-        double[] expected = data.ExpectedOuput();
+        double[] outputs = CalculateOutputs(inputs);
+  
         double cost = 0;
         for (int i = 0; i < outputs.Length; i++)
         {
-            cost += DataPointCost(outputs[i], expected[i]);
+            var semicost = DataPointCost(outputs[i], expected[i]);
+            cost += semicost;
+            //Debug.Log($"Output: {outputs[i]}, Expected: {expected[i]}, Cost: " + semicost.ToString("N3"));
         }
-
-        return cost;
+        //Debug.Log("Data cost: " + cost.ToString("N3"));
+        return cost * 0.5;
     }
     
     public double DataPointCost(double guess, double expected)
     {
-        //Debug.Log(guess.ToString("F6") + " "  + expected);
+       
         var semival =  (expected - guess);
-        return semival * semival;
+        //Debug.Log("Guess: " + guess.ToString("F6") + " / " + expected + " cost: " + (semival * semival));
+        return (semival * semival);
     }
     
     public  double DataPointCostDerivative(double guess, double expected)
     {
-        return 2 * (guess - expected);
+        return (guess - expected);
     }
 
     
@@ -196,6 +213,21 @@ public class NeuralNetwork
 
         return maxIndex;
     }
+
+    public double GetMaxOutputValue(double[] input)
+    {
+        double[] outputs = CalculateOutputs(input);
+        int maxIndex = 0;
+
+        for (int i = 1; i < outputs.Length; i++)
+        {
+            if (outputs[i] > outputs[maxIndex])
+                maxIndex = i;
+        }
+
+        return outputs[maxIndex];
+    }
+
 
     public List<double> GetNodes()
     {
@@ -231,21 +263,21 @@ public class NeuralNetwork
         return weigths;
     }
     
-    public void Learn(CafeData learnData, float learnRate)
+    public void Learn(double[] input, double[] expectedOutput, float learnRate)
     {
         if (backpropagation)
         {
-            CalculateBackpropagationGradient(learnData);
+            CalculateBackpropagationGradient(input, expectedOutput);
         }
         else
         {
-            CalculateGradient(learnData);
+            CalculateGradient(input, expectedOutput);
         }
         
         //Importante no aplciar el gradiente en el mismo loop en el que se asigna, ya que estariamos actualizando con datos alterados.
         foreach (var layer in layers)
         {
-            layer.ApplyGradient(learnRate);
+            layer.ApplyGradient(learnRate / input.Length);
         }
         if(backpropagation)
             ClearAllCostGradients();
@@ -253,22 +285,22 @@ public class NeuralNetwork
         
     }
 
-    private void CalculateGradient(CafeData learnData)
+    private void CalculateGradient(double[] input, double[] expected)
     {
-        double cost = Cost(learnData);
+        double cost = Cost(input, expected);
         foreach (var layer in layers)
         {
             for (int i = 0; i < layer.lengthOut; i++)
             {
                 layer.biases[i] += H;
-                double newCost = Cost(learnData);
+                double newCost = Cost(input, expected);
                 layer.biases[i] -= H;
                 layer.costGradientBiases[i] = (newCost - cost) / H;
 
                 for (int j = 0; j < layer.lengthIn; j++)
                 {
                     layer.weights[j, i] += H;
-                    double newCostW = Cost(learnData);
+                    double newCostW = Cost(input, expected);
                     layer.weights[j, i] -= H;
                     layer.costGradientWeights[j, i] = (newCostW - cost) / H;
                 }
@@ -276,10 +308,10 @@ public class NeuralNetwork
         }
     }
 
-    private void CalculateBackpropagationGradient(CafeData learnData)
+    private void CalculateBackpropagationGradient(double[] learnData, double[] expectedOutput)
     {
         //actualizar todos los valores de la red
-        CalculateOutputs(learnData.Input());
+        CalculateOutputs(learnData);
         //Pesos en la ultima capa
         //
         //                                   L     L
@@ -290,7 +322,7 @@ public class NeuralNetwork
         //                                 dw     dz    da
         //                                   jk    j     j
         Layer output = layers[layers.Length - 1];
-        double[] neuronValues = output.CalculateOutpuNeuronDerivativeValues(learnData.ExpectedOuput());
+        double[] neuronValues = output.CalculateOutpuNeuronDerivativeValues(expectedOutput);
         output.UpdateGradientsBackP(neuronValues);
 
         for (int hiddenLayer = layers.Length - 2; hiddenLayer >= 0; hiddenLayer--)
@@ -323,11 +355,14 @@ public class Layer
     private double[] weightedInputs;
     private double[] nodeActOutputs;
     private double[] inputs;
-    private bool sigmoid, backpropagation;
+    private bool backpropagation;
+    public Activation activation = Activation.Step;
     public const float H = 0.0001f;
-    public Layer(int numIn,int numOut, bool sigmoid, bool backpropagation)
+    public float inertia = 0;
+    private bool sigmoidAct = true;
+    public Layer(int numIn,int numOut, Activation activation, bool backpropagation, float inertia = 0)
     {
-        this.sigmoid = sigmoid;
+        this.activation = activation;
         this.backpropagation = backpropagation;
         lengthIn = numIn;
         lengthOut = numOut;
@@ -338,6 +373,8 @@ public class Layer
         costGradientBiases = new double[numOut];
         nodeActOutputs = new double[numOut];
         weightedInputs = new double[numOut];
+        this.inertia = inertia;
+        //Debug.Log(activation);
     }
 
     public void ApplyGradient(float learnRate)
@@ -351,17 +388,32 @@ public class Layer
             biases[i] -= costGradientBiases[i] * learnRate;
         }
     }
-    public void InitRandomWeights()
+    public void InitRandomWeights(bool sqrt = true)
     {
-        for (int i = 0; i < weights.GetLength(0); i++)
+        for (int i = 0; i < weights.GetLength(1); i++)
         {
-            for (int j = 0; j < weights.GetLength(1); j++)
+            for (int j = 0; j < weights.GetLength(0); j++)
             {
-                float value = Random.Range(-1f, 1f);
-                value = value / Mathf.Sqrt(lengthIn);
-                weights[i, j] = value;
+                weights[j, i] = GetRandomInitValueWeights(sqrt);
             }
+            biases[i] = GetRandomInitValueBias(sqrt);
         }
+    }
+
+    public double  GetRandomInitValueBias(bool sqrt = true)
+    {
+        float valueBias = Random.Range(-1f, 1f);
+        if(sqrt)
+            valueBias = valueBias / Mathf.Sqrt(lengthOut);
+        return valueBias;
+    }
+
+    public double GetRandomInitValueWeights(bool sqrt = true)
+    {
+        float value = Random.Range(-1f, 1f);
+        if (sqrt)
+            value = value / Mathf.Sqrt(lengthIn);
+        return value;
     }
     public double[] CalculateOutputs(double[] inputsIn)
     {
@@ -373,41 +425,66 @@ public class Layer
 
     public double[] ActivateNeurons(double[] weighted)
     {
-        if (sigmoid)
+        for (int i = 0; i < weighted.Length; i++)
         {
-            for (int i = 0; i < weighted.Length; i++)
-            {
-                nodeActOutputs[i] = SigmoidActivation(weighted[i]);
-            }
+            nodeActOutputs[i] = ActivationFunction(weighted, i);
         }
-        else
-        {
-            for (int i = 0; i < weighted.Length; i++)
-            {
-                nodeActOutputs[i] = StepActivation(weighted[i]);
-            }
-        }
-
         return nodeActOutputs;
     }
-    
-    public double StepActivation(double weightedInput)
+
+    public double StepActivation(double[] values, int index)
     {
-        return weightedInput > 0 ? 1 : 0;
+        return values[index] > 0 ? 1 : 0;
     }
     
-    public static double SigmoidActivation(double value)
+    public static double SigmoidActivation(double[] values, int index)
     {
-        return 1 / (1 + Math.Exp(-value));
+        return 1 / (1 + Math.Exp(-values[index]));
     }
 
-    public static double SigmoidActivationDerivative(double value)
+    public static double RELUActivation(double[] values, int index)
     {
-        var activation = SigmoidActivation(value);
+        //Debug.Log($"vale {value} =>  { (value <= 0 ? 0 : value)}");
+        return values[index] <= 0 ? 0: values[index];
+    }
+
+    public static double RELUActivationDerivative(double[] values, int index)
+    {
+        return values[index] <= 0 ? 0 : 1;
+    }
+
+    public static double SigmoidActivationDerivative(double[] values, int index)
+    {
+        var activation = SigmoidActivation(values, index);
         return activation * (1 - activation);
         //return SigmoidActivation(1 - activation);
     }
 
+    public static double SoftmaxActivation(double[] values, int index)
+    {
+        double expSum = 0;
+        for (int i = 0; i < values.Length; i++)
+        {
+            expSum += Math.Exp(values[i]);
+        }
+
+        double res = Math.Exp(values[index]) / expSum;
+        //Debug.Log("Softmax"+ res);
+        return res;
+    }
+
+    public static double SoftmaxActivationDerivative(double[] values, int index)
+    {
+        double expSum = 0;
+        for (int i = 0; i < values.Length; i++)
+        {
+            expSum += Math.Exp(values[i]);
+        }
+
+        double ex = Math.Exp(values[index]);
+        //Debug.Log("Softmax deriva" + (ex * expSum - ex * ex) / (expSum * expSum));
+        return (ex * expSum - ex * ex) / (expSum * expSum);
+    }
 
     public  double[] WeightResult(double[,] w, double[] x, double[] b)
     {
@@ -438,13 +515,12 @@ public class Layer
     public void ClearGradients(){
         for (int j = 0; j < weights.GetLength(1); j++)
         {
-            double value = 0;
             for (int i = 0; i < weights.GetLength(0); i++)
             {
-                costGradientWeights[i, j] = 0;
+                costGradientWeights[i, j] *= inertia;
             }
 
-            costGradientBiases[j] = 0;
+            costGradientBiases[j] *= inertia;
         }   
     }
     public  double DataPointCostDerivative(double guess, double expected)
@@ -463,7 +539,7 @@ public class Layer
         //          j      j   j        L     L
         //                            dz    da
         //                              j     j
-        neuronValues[i] = SigmoidActivationDerivative(weightedInputs[i]) *
+        neuronValues[i] = ActivationDerivative(weightedInputs, i) *
                           DataPointCostDerivative(nodeActOutputs[i], expectedOut[i]);
         }
 
@@ -513,11 +589,220 @@ public class Layer
                 newNeuronValue += (nextLayer.weights[originNeuron, objetiveNeuron] * nextLayerValues[objetiveNeuron]);
             }
 
-            newNeuronValue *= SigmoidActivationDerivative(weightedInputs[originNeuron]);
+
+            newNeuronValue *= ActivationDerivative(weightedInputs, originNeuron);
             neuronValues[originNeuron] = newNeuronValue;
         }
         
         return neuronValues;
     }
+
+    public double ActivationDerivative(double[] values, int index)
+    {
+        switch (activation)
+        {
+            case Activation.Step:
+                Debug.LogError("Step derivative not implemented");
+                return 0;
+            case Activation.Sigmoid:
+                return SigmoidActivationDerivative(values, index);
+            case Activation.ReLU:
+                return RELUActivationDerivative(values, index);
+            case Activation.Softmax:
+                return SoftmaxActivationDerivative(values, index);
+            default:
+                Debug.LogError("Activation derivative not implemented");
+                return 0;
+        }
+    }
+
+    public double ActivationFunction(double[] values, int index)
+    {
+        switch (activation)
+        {
+            case Activation.Step:
+                return StepActivation(values, index);
+            case Activation.Sigmoid:
+                return SigmoidActivation(values, index);
+            case Activation.ReLU:
+                return RELUActivation(values, index);
+            case Activation.Softmax:
+                return SoftmaxActivation(values, index);
+            default:
+                Debug.LogError("Activation function not implemented");
+                return 0;
+        }
+    }
 }
 
+public class GeneticNetwork : NeuralNetwork
+{
+    private int nodes = 0;
+    public enum GeneticOperation
+    {
+        None,
+        PartialMutation,
+        ImpartialMutation,
+        WeightCrossover,
+        NodeCrossover,
+        NodeMutation
+    }
+    public GeneticOperation operation = GeneticOperation.None;
+    //private int variables = 0;
+    public GeneticNetwork(int[] layerSizes, Activation activation, Activation outputActivation) : base(layerSizes, activation, outputActivation, true, 0)
+    {
+        nodes = 0;
+        for (int l = 0; l < layers.Length; l++)
+        {
+            nodes += layers[l].weights.GetLength(1);
+        }
+        //CalculateVariableAmount();
+    }
+    /*
+    public int GetVariableAmount()
+    {
+        return variables;
+    }
+    private void CalculateVariableAmount()
+    {
+        int count = 0;
+        foreach(var layer in layers)
+        {
+            count += layer.biases.Length;
+            count += layer.weights.Length;
+        }
+        variables = count;
+    }
+    */
+    public void PartialMutation(GeneticNetwork parent, float probability)
+    {
+        operation = GeneticOperation.PartialMutation;
+        for(int l = 0; l < layers.Length; l++)
+        {
+            Layer layer = layers[l];
+            for (int i = 0; i < layer.weights.GetLength(1); i++)
+            {
+                for (int j = 0; j < layer.weights.GetLength(0); j++)
+                {
+                    layer.weights[j, i] = parent.layers[l].weights[j, i];
+                    if (Random.Range(0f, 1f)<probability)
+                        layer.weights[j, i] += layer.GetRandomInitValueWeights(false);
+                }
+                layer.biases[i] = parent.layers[l].biases[i];
+                if (Random.Range(0f, 1f) < probability)
+                    layer.biases[i] += layer.GetRandomInitValueBias(false);
+            }
+        }
+    }
+
+    public void ImpartialMutation(GeneticNetwork parent, float probability)
+    {
+        operation = GeneticOperation.ImpartialMutation;
+        for (int l = 0; l < layers.Length; l++)
+        {
+            Layer layer = layers[l];
+            for (int i = 0; i < layer.weights.GetLength(1); i++)
+            {
+                for (int j = 0; j < layer.weights.GetLength(0); j++)
+                {
+                    layer.weights[j, i] = parent.layers[l].weights[j, i];
+                    if (Random.Range(0f, 1f) < probability)
+                        layer.weights[j, i] = layer.GetRandomInitValueWeights(false);
+                }
+                layer.biases[i] = parent.layers[l].biases[i];
+                if (Random.Range(0f, 1f) < probability)
+                    layer.biases[i] = layer.GetRandomInitValueBias(false);
+            }
+        }
+    }
+
+    public void NoMutation(GeneticNetwork parent)
+    {
+        operation = GeneticOperation.None;
+        for (int l = 0; l < layers.Length; l++)
+        {
+            Layer layer = layers[l];
+            for (int i = 0; i < layer.weights.GetLength(1); i++)
+            {
+                for (int j = 0; j < layer.weights.GetLength(0); j++)
+                {
+                    layer.weights[j, i] = parent.layers[l].weights[j, i];
+                }
+                layer.biases[i] = parent.layers[l].biases[i];
+            }
+        }
+    }
+
+    public void MutateNodes(GeneticNetwork parent, int nodes)
+    {
+        List<int> selectedNodes = new List<int>(nodes);
+        for(int i = 0; i < nodes; i++)
+        {
+            int newNode = Random.Range(0, nodes);
+            if (selectedNodes.Contains(newNode))
+            {
+                i--;
+            }
+            else
+            {
+                selectedNodes.Add(newNode);
+            }
+        }
+        operation = GeneticOperation.NodeMutation;
+        int nodeId = 0;
+        for (int l = 0; l < layers.Length; l++)
+        {
+            Layer layer = layers[l];
+           
+            for (int i = 0; i < layer.weights.GetLength(1); i++)
+            {
+                bool randomize = selectedNodes.Contains(nodeId);
+                for (int j = 0; j < layer.weights.GetLength(0); j++)
+                {
+                    layer.weights[j, i] = parent.layers[l].weights[j, i];
+                    if (randomize)
+                        layer.weights[j, i] += layer.GetRandomInitValueWeights(false);
+                }
+                layer.biases[i] = parent.layers[l].biases[i];
+                if (randomize)
+                    layer.biases[i] += layer.GetRandomInitValueBias(false);
+                nodeId++;
+            }
+        }
+    }
+
+    public void WeightCrossover(GeneticNetwork parent1, GeneticNetwork parent2)
+    {
+        operation = GeneticOperation.WeightCrossover;
+        for (int l = 0; l < layers.Length; l++)
+        {
+            Layer layer = layers[l];
+            for (int i = 0; i < layer.weights.GetLength(1); i++)
+            {
+                for (int j = 0; j < layer.weights.GetLength(0); j++)
+                {
+                    layer.weights[j, i] = Random.Range(0, 2) == 0 ? parent1.layers[l].weights[j, i] : parent2.layers[l].weights[j, i];
+                }
+                layer.biases[i] = Random.Range(0, 2) == 0 ? parent1.layers[l].biases[i] : parent2.layers[l].biases[i];
+            }
+        }
+    }
+
+    public void NodeCrossover(GeneticNetwork parent1, GeneticNetwork parent2)
+    {
+        operation = GeneticOperation.NodeCrossover;
+        for (int l = 0; l < layers.Length; l++)
+        {
+            Layer layer = layers[l];
+            for (int i = 0; i < layer.weights.GetLength(1); i++)
+            {
+                GeneticNetwork parent = Random.Range(0, 2) == 0 ? parent1 : parent2;
+                for (int j = 0; j < layer.weights.GetLength(0); j++)
+                {
+                    layer.weights[j, i] = parent.layers[l].weights[j, i];
+                }
+                layer.biases[i] = parent.layers[l].biases[i];
+            }
+        }
+    }
+}
