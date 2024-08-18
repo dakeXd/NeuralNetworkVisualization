@@ -13,16 +13,20 @@ public class CarNeuralNetwork : MonoBehaviour
     
     void Awake()
     {
-        hit = false;
+       
         sensors = GetComponent<CarSensors>();
         score = GetComponent<CheckpointHelper>();
         car = GetComponent<Car>();
-        int[] layers = new int[] {7, 10, 2};
-        network = new GeneticNetwork(layers, Activation.Sigmoid, Activation.Sigmoid);
-        foreach (var layer in network.layers)
-        {
-            layer.InitRandomWeights(false);
-        }
+       
+        hit = false;
+    }
+
+    public void ResetCar()
+    {
+        hit = false;
+        score.ResetCar();
+        car.RestartRotation();
+        car.rb.isKinematic = false;
     }
     private void OnCollisionEnter2D(Collision2D collision)
     {
@@ -32,10 +36,11 @@ public class CarNeuralNetwork : MonoBehaviour
                 GeneticManager.CarsStopped++;
             hit= true;
             car.rb.velocity = Vector2.zero;
+            car.rb.isKinematic = true;
         }
     }
-    // Update is called once per frame
-    void LateUpdate()
+
+    private void FixedUpdate()
     {
         if (hit)
         {
@@ -44,7 +49,13 @@ public class CarNeuralNetwork : MonoBehaviour
             return;
         }
         double[] output = network.CalculateOutputs(sensors.SensorsAsInputs());
-        Vector2 inputVector = new Vector2((float) output[0] * 2 - 1, (float) output[1] * 2 - 1);
+        Vector2 inputVector = new Vector2((float)output[0], (float)output[1]);
         car.SetInputVector(inputVector);
+    }
+
+    // Update is called once per frame
+    void LateUpdate()
+    {
+        
     }
 }

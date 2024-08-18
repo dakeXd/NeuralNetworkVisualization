@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -8,8 +9,8 @@ public class CarSensors : MonoBehaviour
     Rigidbody2D rb;
     public LayerMask hitMask;
     public float distanceScaler = 1;
-    private float[] distances;
-    bool debug = false;
+    [NonSerialized] public float[] distances;
+    public bool debug = false;
     // Start is called before the first frame update
     void Awake()
     {
@@ -18,11 +19,7 @@ public class CarSensors : MonoBehaviour
         CastRays();
     }
 
-    private void Update()
-    {
-        //Debug.DrawRay(transform.position, transform.up * 100, Color.red, 0f, false);
-        CastRays();
-    }
+ 
     void CastRays()
     {
         Vector2 direction = transform.up;
@@ -38,19 +35,34 @@ public class CarSensors : MonoBehaviour
                 if(debug)
                     Debug.DrawRay(transform.position, subDirection * distance, Color.red, 0, false);
                 distances[index] = Mathf.Clamp01(distance / distanceScaler);
+                index++;
             }
            
         }
     }
 
+    private void FixedUpdate()
+    {
+        CastRays();
+    }
+
     public double[] SensorsAsInputs()
     {
-        double[] input = new double[7];
+       
+        double[] input = new double[6];
         for (int i = 0; i < distances.Length; i++)
             input[i] = distances[i];
         Vector2 localVelocity = transform.InverseTransformDirection(rb.velocity);
-        input[5] = localVelocity.x;
-        input[6] = localVelocity.y;
+        input[5] = localVelocity.magnitude;
+        if (debug){
+            string debugInput = "[";
+            for(int i = 0; i <input.Length; i++)
+            {
+                debugInput += $"{input[i]}, ";
+            }
+            debugInput += "]";
+            Debug.Log(debugInput);
+        }
         return input;
     }
 

@@ -23,6 +23,12 @@ public class Car : MonoBehaviour
         rb = GetComponent<Rigidbody2D>();
     }
 
+    public void RestartRotation()
+    {
+        rotationAngle = transform.localRotation.eulerAngles.z;
+        velocityVUP = 0;
+    }
+
     private void FixedUpdate()
     {
         ApplyEngineForce();

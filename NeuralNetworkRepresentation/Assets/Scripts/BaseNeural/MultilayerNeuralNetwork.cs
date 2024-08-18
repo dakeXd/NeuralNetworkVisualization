@@ -137,7 +137,8 @@ public enum Activation
     Step,
     Sigmoid,
     ReLU,
-    Softmax
+    Softmax,
+    Tanh
 }
 public class NeuralNetwork
 {
@@ -161,6 +162,55 @@ public class NeuralNetwork
         this.backpropagation = backpropagation;
     }
 
+    public double[] Encode()
+    {
+        int size = 0;
+        foreach (var layer in layers)
+        {
+            size += (layer.lengthIn * layer.lengthOut + layer.lengthOut);
+        }
+        double[] encodedNetwork = new double[size];
+        int index = 0;
+        for (int l = 0; l < layers.Length; l++)
+        {
+            Layer layer = layers[l];
+            for (int i = 0; i < layer.weights.GetLength(1); i++)
+            {
+                for (int j = 0; j < layer.weights.GetLength(0); j++)
+                {
+                    encodedNetwork[index] = layer.weights[j, i];
+                    index++;
+                }
+                encodedNetwork[index] = layer.biases[i];
+                index++;
+            }
+        }
+        return encodedNetwork;
+    }
+
+    public void Decode(double[] coded)
+    {
+     
+        int index = 0;
+        for (int l = 0; l < layers.Length; l++)
+        {
+            Layer layer = layers[l];
+            for (int i = 0; i < layer.weights.GetLength(1); i++)
+            {
+                for (int j = 0; j < layer.weights.GetLength(0); j++)
+                {
+                    layer.weights[j, i] = coded[index];
+                    index++;
+                }
+                layer.biases[i] = coded[index];
+                index++;
+            }
+        }
+
+    }
+
+
+
     public double Cost(double[] inputs, double[] expected)
     {
         double[] outputs = CalculateOutputs(inputs);
@@ -176,6 +226,7 @@ public class NeuralNetwork
         return cost * 0.5;
     }
     
+
     public double DataPointCost(double guess, double expected)
     {
        
@@ -452,6 +503,17 @@ public class Layer
     {
         return values[index] <= 0 ? 0 : 1;
     }
+    public static double TanhActivation(double[] values, int index)
+    {
+        //Debug.Log($"vale {value} =>  { (value <= 0 ? 0 : value)}");
+        return Math.Tanh(values[index]);
+    }
+
+    public static double TanhActivationDerivative(double[] values, int index)
+    {
+        var tanh = TanhActivation(values, index);
+        return 1 - (tanh * tanh);
+    }
 
     public static double SigmoidActivationDerivative(double[] values, int index)
     {
@@ -610,6 +672,8 @@ public class Layer
                 return RELUActivationDerivative(values, index);
             case Activation.Softmax:
                 return SoftmaxActivationDerivative(values, index);
+            case Activation.Tanh:
+                return TanhActivationDerivative(values, index);
             default:
                 Debug.LogError("Activation derivative not implemented");
                 return 0;
@@ -628,6 +692,8 @@ public class Layer
                 return RELUActivation(values, index);
             case Activation.Softmax:
                 return SoftmaxActivation(values, index);
+            case Activation.Tanh:
+                return TanhActivation(values, index);
             default:
                 Debug.LogError("Activation function not implemented");
                 return 0;
@@ -638,6 +704,7 @@ public class Layer
 public class GeneticNetwork : NeuralNetwork
 {
     private int nodes = 0;
+    public float fitness = 0;
     public enum GeneticOperation
     {
         None,

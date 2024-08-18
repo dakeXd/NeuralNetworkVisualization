@@ -6,16 +6,24 @@ using UnityEngine;
 public class CheckpointHelper : MonoBehaviour
 {
     private int lastCheckpoint = 0;
-    private int totalCheckpoint = 0;
+    private float totalCheckpoint = 0;
     private int collisions = 0;
     private Vector2 lastPos;
+    private bool better;
     private float elapsedPos = 0;
     private void Start()
     {
-        lastPos = transform.position;
-        lastCheckpoint =  totalCheckpoint = collisions= 0;
+        ResetCar();
+  
     }
 
+    public void ResetCar()
+    {
+        lastPos = transform.position;
+        better = false;
+        totalCheckpoint = 0;
+        lastCheckpoint  = collisions = 0;
+    }
     private void Update()
     {
         elapsedPos += Vector2.Distance(transform.position, lastPos);
@@ -32,7 +40,8 @@ public class CheckpointHelper : MonoBehaviour
                 {
                     lastCheckpoint = 0;
                     elapsedPos = 0;
-                    totalCheckpoint++;
+                    totalCheckpoint+=1;
+                    better = false;
                 }
                 return;
             }
@@ -40,23 +49,25 @@ public class CheckpointHelper : MonoBehaviour
             if(checkpointNmbr == lastCheckpoint + 1)
             {
                 lastCheckpoint++;
-                totalCheckpoint++;
+                totalCheckpoint+=1;
                 elapsedPos = 0;
+                better = false;
                 //Debug.Log("Total chefckpoints " + totalCheckpoint);
             }
 
         }
-    }
 
-    private void OnCollisionEnter2D(Collision2D collision)
-    {
-        if(collision.gameObject.CompareTag("Wall"))
+        if (collision.CompareTag("BetterCheckpoint"))
         {
-            collisions++;
+            if (!better)
+            {
+                totalCheckpoint+= 0.5f;
+                better = true;
+            }
         }
     }
 
-    public int GetTotalPoints()
+    public float GetTotalPoints()
     {
         return totalCheckpoint > 0 ? totalCheckpoint : -100;
     }
@@ -64,7 +75,11 @@ public class CheckpointHelper : MonoBehaviour
     public float CalculateScore()
     {
         //Debug.Log(elapsedPos);
-        return GetTotalPoints() + Mathf.Clamp01(elapsedPos);
+        var nextCheck = ChildRenamer.Instance.GetNearestCheckpoint(lastCheckpoint); ;
+
+        float distance = Vector2.Distance(nextCheck.position, transform.position);
+        //Debug.Log(distance);
+        return GetTotalPoints() + Mathf.Clamp01(1-distance);
     }
 
    

@@ -6,8 +6,8 @@ using static GeneticNetwork;
 public class GeneticManager : MonoBehaviour
 {
     [Header("Parameters")]
-    [SerializeField] private int poblationSize = 30;
-    [SerializeField] private int iterationTime = 30;
+    [SerializeField] private int maxBatches = 3;
+    [SerializeField] private int iterationTime = 30, batchSize = 100;
     [Range(0f,1f)]
     [SerializeField] private float parentScale = 0.92f;
     [Range(0f, 1f)]
@@ -26,7 +26,11 @@ public class GeneticManager : MonoBehaviour
     [Header("Components")]
     [SerializeField] private GameObject carPrefab;
     [SerializeField] private Transform raceStart;
-    private int iteration;
+    [Range(0.1f, 10f)]
+    [SerializeField] private int timeScale = 1;
+    private int[] layers = new int[] { 6, 5, 2 };
+    private int lastTimeScale;
+    private int iteration, batch = 0, poblationSize;
 
     public static int CarsStopped = 0;
 
@@ -35,9 +39,11 @@ public class GeneticManager : MonoBehaviour
 
     private void Awake()
     {
-      
-        cars = new List<CarNeuralNetwork>();
-        parentNetworks = new List<GeneticNetwork>();
+        poblationSize = batchSize * maxBatches;
+        Time.timeScale = timeScale;
+        lastTimeScale = timeScale;
+        cars = new List<CarNeuralNetwork>(batchSize);
+        parentNetworks = new List<GeneticNetwork>(poblationSize);
     }
     private void Start()
     {
@@ -45,7 +51,12 @@ public class GeneticManager : MonoBehaviour
     }
     private void Update()
     {
-        if(CarsStopped >= poblationSize)
+        if(lastTimeScale != timeScale)
+        {
+            Time.timeScale = timeScale;
+            lastTimeScale = timeScale;
+        }
+        if(CarsStopped >= batchSize)
         {
             EndEarly();
         }
@@ -54,13 +65,28 @@ public class GeneticManager : MonoBehaviour
     {
         CarsStopped = 0;
         iteration = 1;
+        batch = 0;
         for (int i = 0; i < poblationSize; i++)
+        {
+            var net = new GeneticNetwork(layers, Activation.Sigmoid, Activation.Tanh);
+            foreach (var layer in net.layers)
+            {
+                layer.InitRandomWeights(false);
+            }
+            parentNetworks.Add(net);
+        }
+        for (int i = 0; i < batchSize; i++)
         {
             //Debug.Log(raceStart.localPosition);
             var newCar = Instantiate(carPrefab, raceStart.position, raceStart.rotation, raceStart.parent);
             newCar.name = "Car_" + i;
-            cars.Add(newCar.GetComponent<CarNeuralNetwork>());
+            var n = newCar.GetComponent<CarNeuralNetwork>();
+            n.network = parentNetworks[i];
+            cars.Add(n);
+
+          
         }
+      
         StartCoroutine(MaxTime());
     }
 
@@ -77,6 +103,18 @@ public class GeneticManager : MonoBehaviour
         if (selection < unbiasedMutationProb + biasedMutationProb + nodeMutationProb + crossoverWeightsProb)
             return GeneticOperation.WeightCrossover;
         return GeneticOperation.NodeCrossover;
+    }
+
+    public GeneticOperation GetRandomMutateOperation()
+    {
+        float operationAdd = unbiasedMutationProb + biasedMutationProb + nodeMutationProb;
+        float selection = Random.Range(0, operationAdd);
+        if (selection < unbiasedMutationProb)
+            return GeneticOperation.ImpartialMutation;
+        if (selection < unbiasedMutationProb + biasedMutationProb)
+            return GeneticOperation.PartialMutation;
+        return GeneticOperation.NodeMutation;
+      
     }
     public GeneticNetwork GetOneParent()
     {
@@ -128,15 +166,20 @@ public class GeneticManager : MonoBehaviour
     public void NextGeneration()
     {
         CarsStopped = 0;
-        for (int i = 0; i < poblationSize; i++)
+        BreedNextGeneration();
+        for (int i = 0; i < cars.Count; i++)
         {
-            GeneticOperation operation = i == 0 ? GeneticOperation.None : GetRandomGeneticOperation();
-            var newCar = Instantiate(carPrefab, raceStart.position, raceStart.rotation, raceStart.parent);
-            newCar.name = "Car_" + i;
+            //GeneticOperation operation = i == 0 ? GeneticOperation.None : GetRandomGeneticOperation();
+            //var newCar = Instantiate(carPrefab, raceStart.position, raceStart.rotation, raceStart.parent);
+            //newCar.name = "Car_" + i;
 
-            var carNet = newCar.GetComponent<CarNeuralNetwork>();
+            var carNet = cars[i];
+            carNet.transform.position = raceStart.position;
+            carNet.transform.rotation = raceStart.rotation;
+
             //Debug.Log(operation);
-            carNet.network.NoMutation(parentNetworks[0]);
+            //carNet.network.NoMutation(parentNetworks[0]);
+            /*
             GeneticNetwork[] parents = GetTwoParent();
             switch (operation)
             {
@@ -158,43 +201,173 @@ public class GeneticManager : MonoBehaviour
                 case GeneticOperation.NodeMutation:
                     carNet.network.MutateNodes(GetOneParent(), nodesMutationAmount);
                     break;
-            }
-            cars.Add(carNet);
+            }*/
+            
+            cars[i].network = parentNetworks[i];
+            cars[i].ResetCar();
         }
-        parentNetworks.Clear();
+
+        batch = 0;
+        StartCoroutine(MaxTime());
+    }
+
+    public void StartNextBatch()
+    {
+
+        for (int i = 0; i < cars.Count; i++)
+        {
+
+            var carNet = cars[i];
+            carNet.transform.position = raceStart.position;
+            carNet.transform.rotation = raceStart.rotation;
+            cars[i].ResetCar();
+        }
+
         StartCoroutine(MaxTime());
     }
 
     public IEnumerator MaxTime()
     {
         yield return new WaitForSeconds(iterationTime);
-        EndGeneration();
+        NextBatch();
     }
 
     public void EndEarly()
     {
         StopAllCoroutines();
-        EndGeneration();
+        NextBatch();
+    }
+
+    public void NextBatch()
+    {
+        int preBatchOffset = batch * batchSize;
+        batch++;
+        CarsStopped = 0;
+
+        for (int i = 0; i < cars.Count; i++)
+        {
+            cars[i].network.fitness = cars[i].score.CalculateScore();
+            parentNetworks[preBatchOffset + i] = cars[i].network;
+        }
+        if(batch >= maxBatches)
+        {
+            EndGeneration();
+        }
+        else
+        {
+            int batchOffset = batch * batchSize;
+            for (int i = 0; i < cars.Count; i++)
+            {
+                cars[i].network = parentNetworks[batchOffset + i];
+            }
+            Invoke(nameof(StartNextBatch), 0.5f);
+        }
     }
     public void EndGeneration()
     {
+        //Debug.Log("Cars stopped: " + CarsStopped);
         CarsStopped = 0;
-        cars.Sort((a, b) => a.score.CalculateScore().CompareTo(b.score.CalculateScore()));
-        Debug.Log("Iteration " + iteration + ": Best car is " + cars[cars.Count-1] + ": " + cars[cars.Count - 1].score.CalculateScore());
-   
-        for (int i = cars.Count-1; i >= 0; i--)
-        {
-            //Debug.Log(i + " " +cars[i].gameObject.name + ": " + cars[i].score.CalculateScore());
-            parentNetworks.Add(cars[i].network);
-            Destroy(cars[i].gameObject);
-            cars.RemoveAt(i);
-        }
-        cars.Clear();
+        parentNetworks.Sort((a, b) => b.fitness.CompareTo(a.fitness));
+        Debug.Log("Iteration " + iteration + ": Best individue is " + parentNetworks[0] + ": " + parentNetworks[0].fitness);
+
         iteration++;
         Invoke(nameof(NextGeneration), 1);
 
     }
 
+    public void Crossover(ref double[] p1,ref double[] p2)
+    {
+        double[] ch1 = new  double[p1.Length];
+        double[] ch2 = new double[p1.Length];
+
+        for(int i = 0; i < p1.Length; i++)
+        {
+            bool swap = Random.Range(0f, 1f) < 0.5f;
+            ch1[i] = swap ? p2[i] : p1[i];
+            ch2[i] = swap ? p1[i] : p2[i];
+        }
+        p1 = ch1;
+        p2 = ch2;
+        
+    }
+
+    public GeneticNetwork[] Breed(GeneticNetwork mother, GeneticNetwork father)
+    {
+        int[] layers = new int[] { 6, 5,  2 };
+        GeneticNetwork child1 = new GeneticNetwork(layers, Activation.Sigmoid, Activation.Tanh);
+        GeneticNetwork child2 = new GeneticNetwork(layers, Activation.Sigmoid, Activation.Tanh);
+
+        double[] motherChromosome = mother.Encode();
+        double[] fatherChromosome = father.Encode();
+
+        Crossover(ref motherChromosome, ref fatherChromosome);
+
+        child1.Decode(motherChromosome);
+        child2.Decode(fatherChromosome);
+
+        return new GeneticNetwork[] { child1, child2 };
+    }
+
+    public void Mutate(GeneticNetwork creature, GeneticOperation op)
+    {
+        switch (op)
+        {
+            case GeneticOperation.None:
+                creature.NoMutation(parentNetworks[0]);
+                break;
+            case GeneticOperation.PartialMutation:
+                creature.PartialMutation(creature, mutationProb);
+                break;
+            case GeneticOperation.ImpartialMutation:
+                creature.ImpartialMutation(creature, mutationProb);
+                break;
+            case GeneticOperation.WeightCrossover:
+                break;
+            case GeneticOperation.NodeCrossover:
+                break;
+            case GeneticOperation.NodeMutation:
+                creature.MutateNodes(creature, nodesMutationAmount);
+                break;
+        }
+
+    }
+
+    // Creates next generation through Roulette wheel selection
+    public void BreedNextGeneration()
+    {
+        // Create a new generation 
+        var nextGeneration = new List<GeneticNetwork>();
+      
+        //Save the two best cars for next gen
+        nextGeneration.Add(parentNetworks[0]);
+        nextGeneration.Add(parentNetworks[1]);
+
+        // Create 2 children for every breeding of NN
+        for (int i = 0; i < parentNetworks.Count / 2; i++)
+        {
+            // Select parents to breed
+            var parents = GetTwoParent();
 
 
+            //Breed the two selected parents and add them to the next generation
+            //Debug.Log("Breeding: " + parent1Index + " with fitness " + population[parent1Index].fitness);
+            //Debug.Log("and " + parent2Index + " with fitness " + population[parent2Index].fitness);
+
+            GeneticNetwork[] children = Breed(parents[0], parents[1]);
+
+            // Mutate children
+            Mutate(children[0], GetRandomMutateOperation());
+            Mutate(children[1], GetRandomMutateOperation());
+
+            // Add the children to the next generation
+            nextGeneration.Add(children[0]);
+            nextGeneration.Add(children[1]);
+        } //  End foor loop -- Breeding
+
+        // Make the children adults
+        for (int i = 1; i < parentNetworks.Count; i++)
+        {
+            parentNetworks[i] = nextGeneration[i];
+        }
+    }// End NextGeneration()
 }
