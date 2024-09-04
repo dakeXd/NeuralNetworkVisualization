@@ -1,7 +1,9 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using static GeneticNetwork;
+using Random = UnityEngine.Random;
 
 public class GeneticManager : MonoBehaviour
 {
@@ -26,13 +28,12 @@ public class GeneticManager : MonoBehaviour
     [Header("Components")]
     [SerializeField] private GameObject carPrefab;
     [SerializeField] private Transform raceStart;
-    [Range(0.1f, 10f)]
-    [SerializeField] private int timeScale = 1;
     private int[] layers = new int[] { 6, 5, 2 };
-    private int lastTimeScale;
     private int iteration, batch = 0, poblationSize;
 
     public static int CarsStopped = 0;
+
+    [NonSerialized] public float bestFitness = 0;
 
     private List<CarNeuralNetwork> cars;
     private List<GeneticNetwork> parentNetworks;
@@ -40,8 +41,6 @@ public class GeneticManager : MonoBehaviour
     private void Awake()
     {
         poblationSize = batchSize * maxBatches;
-        Time.timeScale = timeScale;
-        lastTimeScale = timeScale;
         cars = new List<CarNeuralNetwork>(batchSize);
         parentNetworks = new List<GeneticNetwork>(poblationSize);
     }
@@ -51,16 +50,13 @@ public class GeneticManager : MonoBehaviour
     }
     private void Update()
     {
-        if(lastTimeScale != timeScale)
-        {
-            Time.timeScale = timeScale;
-            lastTimeScale = timeScale;
-        }
         if(CarsStopped >= batchSize)
         {
             EndEarly();
         }
     }
+
+   
     public void FirstGeneration()
     {
         CarsStopped = 0;
@@ -260,7 +256,7 @@ public class GeneticManager : MonoBehaviour
             {
                 cars[i].network = parentNetworks[batchOffset + i];
             }
-            Invoke(nameof(StartNextBatch), 0.5f);
+            StartNextBatch();
         }
     }
     public void EndGeneration()
@@ -269,9 +265,9 @@ public class GeneticManager : MonoBehaviour
         CarsStopped = 0;
         parentNetworks.Sort((a, b) => b.fitness.CompareTo(a.fitness));
         Debug.Log("Iteration " + iteration + ": Best individue is " + parentNetworks[0] + ": " + parentNetworks[0].fitness);
-
+        bestFitness = parentNetworks[0].fitness;
         iteration++;
-        Invoke(nameof(NextGeneration), 1);
+        NextGeneration();
 
     }
 
@@ -370,4 +366,35 @@ public class GeneticManager : MonoBehaviour
             parentNetworks[i] = nextGeneration[i];
         }
     }// End NextGeneration()
+
+    //Getters
+    public int GetPopSize()
+    {
+        return poblationSize;
+    }
+
+    public int GetBatchSize()
+    {
+        return batchSize;
+    }
+
+    public int GetBatchTime()
+    {
+        return iterationTime;
+    }
+
+    public int GetMaxBatches()
+    {
+        return maxBatches;
+    }
+
+    public int GetGeneration()
+    {
+        return iteration;
+    }
+
+    public int GetCurrentBatch()
+    {
+        return batch;
+    }
 }

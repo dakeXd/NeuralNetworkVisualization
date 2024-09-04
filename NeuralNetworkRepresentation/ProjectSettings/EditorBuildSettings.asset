@@ -29,4 +29,7 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/Learning2.unity
     guid: e8fb1e6927fd0444aa4f45af271fd1ad
+  - enabled: 1
+    path: Assets/Scenes/Cars.unity
+    guid: 7026eaeeb8d429249bfd333393a497eb
   m_configObjects: {}
